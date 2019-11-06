@@ -112,7 +112,72 @@
 - Per scheduler
   - Capacity managers
     - Allocate OSU resources
+    - State machines for supervised warps
+    - Warp stack for inactive warps
+    - Countrers tracking preloads and evictions
+    - What about long-latency last instructions?
+     - Free all registers other than pending ones (e.g. for loads)
   - Operand Staging Units
+    - 8 independent banks
+    - Free, clean, and dirty list
+    - Preloads and allocations
+      - Allocation occurs through preload or write to interior registers
+      - Preloads are passed from the CMs for each bank in parallel
+      - Register is either in clean/dirty list (otherwise send to compressor/L1$)
+  - Evictions
+    - Registers marked for inval. are added to the free list
+      - Mark after last write using that register
+    - Output registers put in the clean/dirty list
+  - Register -> Memory Mapping
+    - cudaMalloc()
+    - Registers are laid out sequentially
   - Compressor Units
-  - Arbiter to direct reads to the correct operand stagin unit
-  -
+    - Bitmask of compressed registers
+    - Can store 15 ompressed registers in a single cache line
+      - Extra cycle of latency for non-compressed preloads
+      - +2 for compressed ones
+  - Metadata Encoding
+    - Added to instruction stream by the compiler
+    - Regions start with flag instruction
+      - Bank usage + up to 3 preloads and cache evictions
+        - More as necessary
+    - Every 9 instructions, one metadata one to mark last use of registers
+  - Arbiter to direct reads to the correct operand staging unit
+## Evaluation
+- Methodology
+  - GPGPU-Sim w/ GTX 980 configuration
+    - PTXPlus
+    - Implemented baseline RF design and RegLess in Verilog
+  - Compared against
+    - Register File Virtualization (RFV)
+    - Register File Caching (RFH)
+- Area and Power
+  - Best power/area at 128 register, but negligible perf. hit at 512
+-  Energy Savings
+  - 75.3% reduction
+  - 11% overall
+- Performance
+  - Most benchmarks see no performance change
+  - Some benchmarks have complex control flow
+    - Can't invalidate until last use
+  - Others have registers live across global loads
+- Register Preload Location, L1 Bandwidth
+  - Rarely go to main memory
+  - Compressors help when register working set grows
+    - Still, some can't be compressed
+- Region sizes
+  - Most register lifetimes are within a region
+  - Region size typically limits control flow
+    - Compute benchmarks typically have the largest regions
+## Related work
+- Caching register space in memory
+  - Too naive (requires more active management)
+- RFC + RFV
+- Resource-aware scheduling
+- Divergence aware scheduling
+- Value compression/scalarization
+## Conclusion
+- RFs are large structures that consume a lot of power
+- Replace register file with smaller, actively managed staging unit
+  - Compiler help
+- Reduce register access energy by 75%, and total GPU energy by 11%
