@@ -1,0 +1,118 @@
+# Paper Details
+- Title
+  - RegLess: Just-in-Time Operand Staging for GPUs
+- Conference
+  - MICRO
+- Year 
+  - 2017
+# Summary
+## Abstract
+- Register Files (RFs) are large and power-hungry on GPUs
+  - Prior work has kept the large, high-bandwidth structure
+  - Reducing the size can lead to spills and fills
+- Replace the RF with an operand staging unit
+  - Slice computation graphs and allocate operand storage at runtim
+  - Most values have a short life (do not need to persist past regions)
+  - Store longer-living operands in global memory
+    - Must manage this more carefully to avoid stalls
+- RegLess
+  - Compiler annotations to anticipate operand usage
+  - 25% less RF size
+  - 75% less energy
+    - 11% less GPU energy
+  - No perf Loss
+## Introduction
+- Trend towards energy efficiency in GPUs
+  - Datacenters and mobile 
+- Stalls are hidden by context switches
+  - Fast because all state exists in  large register files
+- Prior work
+  - Small HW/SW managed cache to avoid accesses
+  - Dynamically reusing registers (RF virtualization)
+  - Reuse unused RF as L1/scratchpad
+- RegLess
+  - Anticipates when registers will be used
+    - Single-region registers can be reused
+    - Multi-region registers can be evicted
+      - Fetch from memory
+    - Hardware resource manager
+      - Use annotations to anticipate which registers to fetch
+      - Controls which warps are eligible to issue
+    - Region partitioning
+      - Maximize registers interior to one region
+      - Avoids spills/fills
+- Contributions
+  - Replace RF with operand staging unit
+  - Compiler techniques to maximize registers interior to a region
+  - Managmeent of operand staging unit to maximize performance
+  - Power + Area analysis
+  - Reduction of register capacity by 75%
+## RF Replacement Challenges
+- A smaller RF can not hold all live registers
+  - Management must be precise
+  - How much to space to allocate each warp?
+  - Limited memory bandwidth
+    - Spill/Fills
+  - Allowing cross-region registers to fit in L1
+- Capacity Allocation
+  - Not every warp can have all live registers present
+    - However, not every register is accessed by every warp all the time
+  - Spills/Fills don't work
+    - Backed by main memory! Not the RF!
+    - Only schedule warps that have been allocated space
+  - Allocations for running warps
+    - Compiler annotations
+      - Divide kernel into atomic regions
+      - Activates warps when region is allocated
+- Memory Side Bandwidth
+  - Once access can be made through the L1$ per cycles
+    - Must avoid this!
+  - Define regions to minimize the number of registers that must go through the L1$
+    - Areas with fewest number of live registers
+  - Early loading into staging unit
+    - Activate region from previously active warp (locality)
+    - Preload registers before issuing an instruction
+- L1 Cache Capacity
+  - Combined L1 and Operand Staging Unit are still smaller than the regiser working set of some kernels
+    - Compression based on value similarity
+## Design Overview
+- Compile time
+  - Kernel is divided into regions of instructions
+  - Anotates the inputs and outputs of these regions
+- Run time
+  - Registers are stored in the operand staging unit
+  - Actively manage the operand staging unit
+  - Capacity manager uses free capacity to preload registers
+## Compiler Code Generation
+- Region Creation
+  - Natural 'seams' in the application when values are computed
+  - Break apart global load and first use
+    - Taking up space in the operand staging unit
+  - Regions do not span basic block boundaries
+    - Oblivious to control flow
+- Region Creation Algorithm
+  - Creates a CFG with regions equal to BBs
+  - Iterates through each region
+    - Does it meet constraints?
+      - Max registers of operand staging unit, global load+first use, etc.
+      - No? Split! (may happen multiple times)
+        - First PC where region becomes invalid
+- Register Lifetime
+  - Erase annotation for last use of an interior register
+  - Evict annotation for input/output registers
+  - Managing L1
+    - Die when pre-loaded for the last time
+    - CF ends their life
+- Control Flow and Register Liveness
+  - Soft-definitiion (may not kill an entire register)
+    - Must be used in other path
+  - Must invalidate in the post-dominator of both definitions
+  - Pre-load soft definitions to preserve registers
+## Hardware Design
+- Per scheduler
+  - Capacity managers
+    - Allocate OSU resources
+  - Operand Staging Units
+  - Compressor Units
+  - Arbiter to direct reads to the correct operand stagin unit
+  -
